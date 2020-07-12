@@ -79,14 +79,14 @@ export const windowValuesPlugin = ({ window: windowObject = window }) => ({
 
       const pluginContext = getPluginContext('windowValues')
 
-      pluginContext.mounted[logic.pathString] = () => {
+      pluginContext.mounted[logic.pathString] = (hasOld = false) => {
         let updates = {}
 
         Object.entries(logic.windowValuesInput).forEach(([key, inputParams]) => {
           const calcFunction = Array.isArray(inputParams) ? inputParams[1] : inputParams
-          const oldValue = logic.values[key]
+          const oldValue = hasOld ? logic.values[key] : null
           const newValue = calcFunction(windowObject)
-          if (oldValue !== newValue) {
+          if (!hasOld || oldValue !== newValue) {
             updates[key] = newValue
           }
         })
