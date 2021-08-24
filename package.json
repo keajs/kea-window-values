@@ -1,6 +1,6 @@
 {
   "name": "kea-window-values",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Sync: `values.anything` with `window.whatever` onscroll & onresize",
   "author": "Marius Andra",
   "license": "MIT",
