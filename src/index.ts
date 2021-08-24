@@ -15,21 +15,26 @@
     }
   })
 */
-import { kea, setPluginContext, getPluginContext } from 'kea'
+import { kea, setPluginContext, getPluginContext, KeaPlugin } from 'kea'
+
+export type WindowValuesPluginContext = {
+  mounted: Record<string, (() => void) | undefined>
+  eventListener: () => void
+}
+
+export type WindowValuesCache = {
+  windowValuesInput: Record<string, (window: Window & typeof globalThis) => any>
+}
 
 export const windowValues = kea({
   path: () => ['kea', 'windowValues', 'index'],
   actions: () => ({
-    syncWindowValues: (windowValues) => ({ windowValues }),
+    syncWindowValues: (windowValues: Record<string, Record<string, any>>) => ({ windowValues }),
   }),
 })
 
-export const windowValuesPlugin = ({ window: windowObject = window }) => ({
+export const windowValuesPlugin = ({ window: windowObject = window }): KeaPlugin => ({
   name: 'windowValues',
-
-  defaults: () => ({
-    windowValuesInput: false,
-  }),
 
   events: {
     afterPlugin() {
@@ -49,7 +54,7 @@ export const windowValuesPlugin = ({ window: windowObject = window }) => ({
           typeof input.windowValues === 'function' ? input.windowValues(logic) : input.windowValues
         logic.extend({
           reducers: ({ pathString }) => {
-            let reducers = {}
+            const reducers: Record<string, [any, Record<string, (state: any, payload: any) => any>]> = {}
 
             Object.entries(windowValuesInput).forEach(([key, inputParams]) => {
               const calcFunction = Array.isArray(inputParams) ? inputParams[1] : inputParams
@@ -57,7 +62,7 @@ export const windowValuesPlugin = ({ window: windowObject = window }) => ({
               reducers[key] = [
                 defaultValue,
                 {
-                  [windowValues.actions.syncWindowValues]: (state, { windowValues }) => {
+                  [windowValues.actionTypes.syncWindowValues]: (state, { windowValues }) => {
                     const value = windowValues?.[pathString]?.[key]
                     return typeof value === 'undefined' ? state : value
                   },
@@ -68,21 +73,21 @@ export const windowValuesPlugin = ({ window: windowObject = window }) => ({
             return reducers
           },
         })
-        logic.windowValuesInput = { ...(logic.windowValuesInput || {}), ...windowValuesInput }
+        logic.cache.windowValuesInput = { ...(logic.cache.windowValuesInput || {}), ...windowValuesInput }
       }
     },
 
     afterMount(logic) {
-      if (!logic.windowValuesInput || typeof windowObject === 'undefined') {
+      if (!logic.cache.windowValuesInput || typeof windowObject === 'undefined') {
         return
       }
 
-      const pluginContext = getPluginContext('windowValues')
+      const pluginContext = getPluginContext('windowValues') as WindowValuesPluginContext
 
       pluginContext.mounted[logic.pathString] = (hasOld = false) => {
-        let updates = {}
+        const updates: Record<string, any> = {}
 
-        Object.entries(logic.windowValuesInput).forEach(([key, inputParams]) => {
+        Object.entries(logic.cache.windowValuesInput).forEach(([key, inputParams]) => {
           const calcFunction = Array.isArray(inputParams) ? inputParams[1] : inputParams
           const oldValue = hasOld ? logic.values[key] : null
           const newValue = calcFunction(windowObject)
@@ -96,9 +101,9 @@ export const windowValuesPlugin = ({ window: windowObject = window }) => ({
 
       if (!pluginContext.eventListener) {
         pluginContext.eventListener = function () {
-          const response = {}
+          const response: Record<string, any> = {}
           Object.entries(pluginContext.mounted).forEach(([pathString, windowFunction]) => {
-            const value = windowFunction()
+            const value = windowFunction?.()
             if (value) {
               response[pathString] = value
             }
@@ -114,7 +119,7 @@ export const windowValuesPlugin = ({ window: windowObject = window }) => ({
     },
 
     beforeUnmount(logic) {
-      if (!logic.windowValuesInput || typeof windowObject === 'undefined') {
+      if (!logic.cache.windowValuesInput || typeof windowObject === 'undefined') {
         return
       }
 
