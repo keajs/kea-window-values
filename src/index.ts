@@ -15,19 +15,29 @@
     }
   })
 */
-import { kea, setPluginContext, getPluginContext, KeaPlugin } from 'kea'
+import {
+  kea,
+  setPluginContext,
+  getPluginContext,
+  KeaPlugin,
+  LogicBuilder,
+  Logic,
+  reducers,
+  afterMount,
+  beforeUnmount,
+  BuiltLogic,
+} from 'kea'
+
+export type WindowValuesInput = Record<string, Record<string, any>>
 
 export type WindowValuesPluginContext = {
+  windowObject?: Window
   mounted: Record<string, (() => void) | undefined>
   eventListener: () => void
 }
 
-export type WindowValuesCache = {
-  windowValuesInput: Record<string, (window: Window & typeof globalThis) => any>
-}
-
-export const windowValues = kea({
-  path: () => ['kea', 'windowValues', 'index'],
+export const windowValuesLogic = kea({
+  path: () => ['kea', 'windowValues', 'logic'],
   actions: () => ({
     syncWindowValues: (windowValues: Record<string, Record<string, any>>) => ({ windowValues }),
   }),
@@ -39,50 +49,65 @@ export const windowValuesPlugin = ({ window: windowObject = window }): KeaPlugin
   events: {
     afterPlugin() {
       setPluginContext('windowValues', {
+        windowObject: windowObject,
         eventListener: undefined,
         mounted: {},
       })
     },
 
     afterReduxStore() {
-      windowValues.mount()
+      windowValuesLogic.mount()
     },
 
-    beforeLogic(logic, input) {
-      if (input.windowValues) {
-        const windowValuesInput =
-          typeof input.windowValues === 'function' ? input.windowValues(logic) : input.windowValues
-        logic.extend({
-          reducers: ({ pathString }) => {
-            const reducers: Record<string, [any, Record<string, (state: any, payload: any) => any>]> = {}
-
-            Object.entries(windowValuesInput).forEach(([key, inputParams]) => {
-              const calcFunction = Array.isArray(inputParams) ? inputParams[1] : inputParams
-              const defaultValue = Array.isArray(inputParams) ? inputParams[0] : () => calcFunction(windowObject)
-              reducers[key] = [
-                defaultValue,
-                {
-                  [windowValues.actionTypes.syncWindowValues]: (state, { windowValues }) => {
-                    const value = windowValues?.[pathString]?.[key]
-                    return typeof value === 'undefined' ? state : value
-                  },
-                },
-              ]
-            })
-
-            return reducers
-          },
-        })
-        logic.cache.windowValuesInput = { ...(logic.cache.windowValuesInput || {}), ...windowValuesInput }
+    beforeCloseContext() {
+      const { eventListener } = getWindowValuesPluginContext()
+      if (eventListener) {
+        windowObject.document.removeEventListener('scroll', eventListener, true)
+        windowObject.removeEventListener('resize', eventListener)
       }
     },
 
-    afterMount(logic) {
+    legacyBuild: (logic, input) => {
+      'windowValues' in input && input.windowValues && windowValues(input.windowValues)(logic)
+    },
+  },
+})
+
+export function windowValues<L extends Logic = Logic>(
+  input: WindowValuesInput | ((logic: BuiltLogic<L>) => WindowValuesInput),
+): LogicBuilder<L> {
+  return (logic) => {
+    const { windowObject } = getWindowValuesPluginContext()
+    const windowValuesInput = typeof input === 'function' ? input(logic) : input
+    logic.cache.windowValuesInput = { ...(logic.cache.windowValuesInput || {}), ...windowValuesInput }
+
+    reducers((logic) => {
+      const reducers: Record<string, [any, Record<string, (state: any, payload: any) => any>]> = {}
+
+      Object.entries(windowValuesInput).forEach(([key, inputParams]) => {
+        const calcFunction = Array.isArray(inputParams) ? inputParams[1] : inputParams
+        const defaultValue = Array.isArray(inputParams) ? inputParams[0] : () => calcFunction(windowObject)
+        reducers[key] = [
+          defaultValue,
+          {
+            [windowValuesLogic.actionTypes.syncWindowValues]: (state, { windowValues }) => {
+              const value = windowValues?.[logic.pathString]?.[key]
+              return typeof value === 'undefined' ? state : value
+            },
+          },
+        ]
+      })
+
+      return reducers
+    })(logic)
+
+    afterMount((logic) => {
+      const { windowObject } = getWindowValuesPluginContext()
       if (!logic.cache.windowValuesInput || typeof windowObject === 'undefined') {
         return
       }
 
-      const pluginContext = getPluginContext('windowValues') as WindowValuesPluginContext
+      const pluginContext = getWindowValuesPluginContext() as WindowValuesPluginContext
 
       pluginContext.mounted[logic.pathString] = (hasOld = false) => {
         const updates: Record<string, any> = {}
@@ -109,21 +134,22 @@ export const windowValuesPlugin = ({ window: windowObject = window }): KeaPlugin
             }
           })
           if (Object.keys(response).length > 0) {
-            windowValues.actions.syncWindowValues(response)
+            windowValuesLogic.actions.syncWindowValues(response)
           }
         }
 
         windowObject.document.addEventListener('scroll', pluginContext.eventListener, true)
         windowObject.addEventListener('resize', pluginContext.eventListener)
       }
-    },
+    })(logic)
 
-    beforeUnmount(logic) {
+    beforeUnmount((logic) => {
+      const { windowObject } = getWindowValuesPluginContext()
       if (!logic.cache.windowValuesInput || typeof windowObject === 'undefined') {
         return
       }
 
-      const { mounted, eventListener } = getPluginContext('windowValues')
+      const { mounted, eventListener } = getWindowValuesPluginContext()
 
       delete mounted[logic.pathString]
 
@@ -131,14 +157,10 @@ export const windowValuesPlugin = ({ window: windowObject = window }): KeaPlugin
         windowObject.document.removeEventListener('scroll', eventListener, true)
         windowObject.removeEventListener('resize', eventListener)
       }
-    },
+    })(logic)
+  }
+}
 
-    beforeCloseContext() {
-      const { eventListener } = getPluginContext('windowValues')
-      if (eventListener) {
-        windowObject.document.removeEventListener('scroll', eventListener, true)
-        window.removeEventListener('resize', eventListener)
-      }
-    },
-  },
-})
+function getWindowValuesPluginContext(): WindowValuesPluginContext {
+  return getPluginContext('windowValues')
+}
