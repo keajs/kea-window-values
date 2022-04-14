@@ -67,7 +67,7 @@ export const windowValuesPlugin = ({ window: windowObject = window }): KeaPlugin
       }
     },
 
-    legacyBuild: (logic, input) => {
+    legacyBuildAfterDefaults: (logic, input) => {
       'windowValues' in input && input.windowValues && windowValues(input.windowValues)(logic)
     },
   },
