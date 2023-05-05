@@ -34,4 +34,4 @@
 
 ## Sample usage
 
-[Read the documentation](https://kea.js.org/docs/plugins/window-values)
+[Read the documentation](https://keajs.org/docs/plugins/window-values)
