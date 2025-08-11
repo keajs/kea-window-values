@@ -32,7 +32,7 @@ export type WindowValuesInput = Record<string, Record<string, any>>
 
 export type WindowValuesPluginContext = {
   windowObject?: Window
-  mounted: Record<string, (() => void) | undefined>
+  mounted: Record<string, ((hasOld: boolean) => void) | undefined>
   eventListener: () => void
 }
 
@@ -67,7 +67,7 @@ export const windowValuesPlugin = ({ window: windowObject = window }): KeaPlugin
       }
     },
 
-    legacyBuildAfterDefaults: (logic, input) => {
+    legacyBuildAfterDefaults: (logic: BuiltLogic, input: any) => {
       'windowValues' in input && input.windowValues && windowValues(input.windowValues)(logic)
     },
   },
@@ -76,12 +76,12 @@ export const windowValuesPlugin = ({ window: windowObject = window }): KeaPlugin
 export function windowValues<L extends Logic = Logic>(
   input: WindowValuesInput | ((logic: BuiltLogic<L>) => WindowValuesInput),
 ): LogicBuilder<L> {
-  return (logic) => {
+  return (logic: BuiltLogic<L>) => {
     const { windowObject } = getWindowValuesPluginContext()
     const windowValuesInput = typeof input === 'function' ? input(logic) : input
     logic.cache.windowValuesInput = { ...(logic.cache.windowValuesInput || {}), ...windowValuesInput }
 
-    reducers((logic) => {
+    reducers((logic: BuiltLogic<L>) => {
       const reducers: Record<string, [any, Record<string, (state: any, payload: any) => any>]> = {}
 
       Object.entries(windowValuesInput).forEach(([key, inputParams]) => {
@@ -101,7 +101,7 @@ export function windowValues<L extends Logic = Logic>(
       return reducers
     })(logic)
 
-    afterMount((logic) => {
+    afterMount((logic: BuiltLogic<L>) => {
       const { windowObject } = getWindowValuesPluginContext()
       if (!logic.cache.windowValuesInput || typeof windowObject === 'undefined') {
         return
@@ -128,7 +128,7 @@ export function windowValues<L extends Logic = Logic>(
         pluginContext.eventListener = function () {
           const response: Record<string, any> = {}
           Object.entries(pluginContext.mounted).forEach(([pathString, windowFunction]) => {
-            const value = windowFunction?.()
+            const value = windowFunction?.(true)
             if (value) {
               response[pathString] = value
             }
@@ -143,7 +143,7 @@ export function windowValues<L extends Logic = Logic>(
       }
     })(logic)
 
-    beforeUnmount((logic) => {
+    beforeUnmount((logic: BuiltLogic<L>) => {
       const { windowObject } = getWindowValuesPluginContext()
       if (!logic.cache.windowValuesInput || typeof windowObject === 'undefined') {
         return
